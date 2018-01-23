@@ -1,0 +1,233 @@
+#define _GNU_SOURCE
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
+#include <cilk-lib.cilkh>
+
+int N;
+FILE *input;
+float **A;
+
+cilk float calculate_coefficient(int l, int k){
+
+    return A[l][k] / A[k][k];
+
+}
+
+cilk float divide_row_val(int m, int k, int o){
+
+    return A[m][o] - A[m][k]*A[k][o];
+
+}
+
+void print_array(){
+
+    int i = 0;
+    for(; i<N; i++){
+
+        int j = 0;
+        for(; j<N+1; j++)
+            printf("%.5f ", A[i][j]);
+            printf("\n");
+    }
+    printf("\n");
+
+}
+
+cilk void backward_elimination(int index){
+
+    int i = index-1;
+    int m;
+    int o;
+    for(;i>=0;i--){
+        A[i][index] = spawn calculate_coefficient(i,index);
+    }
+
+    m = index -1;
+    for(; m >= 0; m--){
+
+        int o = index+1;
+        print_array();
+
+        for(; o < N+1; o++){
+
+            A[m][o] = spawn divide_row_val(m, index, o);
+
+        }
+
+        A[m][index] = 0;
+
+        printf("\n");
+
+    }
+
+}
+
+cilk void forward_elimination(){
+
+    int file_index;
+    int l;
+    int k = 0;
+    int m;
+    for(; k < N; k++){
+
+        if(fabs(A[k][k])<0.01){
+            //print_array();
+            float *C = malloc( (N+1) * sizeof(float) );
+            int i = 0;
+            //row swap <->
+            for(; i<N; i++){
+                C[i] = A[k+1][i];
+                A[k+1][i] = A[k][i];
+                A[k][i] = C[i];
+            }
+
+        }
+
+        l = k + 1;
+
+        // calculating coefficients
+        for(; l<N; l++){
+
+             A[l][k] = spawn calculate_coefficient(l, k);
+
+        }
+        sync;
+//
+        if(k>0)
+         spawn backward_elimination(k);
+
+
+        m = k + 1;
+        for(; m < N; m++){
+
+            int o = k+1;
+            for(; o < N+1; o++){
+
+                A[m][o] = spawn divide_row_val(m, k, o);
+
+            }
+
+            A[m][k] = 0;
+
+            printf("\n");
+
+        }
+
+        sync;
+
+    }
+
+}
+
+
+cilk void gaussian_elimination()
+{
+
+    int i=0;
+
+    spawn forward_elimination();
+    sync;
+//
+    for(;i<N;i++){
+        A[i][N] = A[i][N]/A[i][i] ;
+        A[i][i]= 1;
+    }
+
+}
+
+cilk int main(int argc, char *argv[])
+{
+
+    FILE *f;
+	int n, result;
+    int m = 0;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    int i = 0;
+
+	if (argc != 2) {
+	  fprintf(stderr, "Usage: fib [<cilk options>] <n>\n");
+	  Cilk_exit(1);
+	}
+
+	input = fopen("input.txt", "r");
+	if (input == NULL)
+	    exit(EXIT_FAILURE);
+
+
+	read = getline(&line, &len, input);
+    N = atoi(line);
+
+    printf("\nInput N:");
+    printf("\n%d\n", N);
+
+    A = malloc((N)*sizeof(float *));
+    for( ; m < N ; m++)
+        A[m] = malloc( (N+1) * sizeof(float) );
+
+    printf("\nInput matrix:\n");
+    fflush(stdout);
+	while ((read = getline(&line, &len, input)) != -1) {
+
+        int j = 0;
+        char *p;
+        p = strtok(line, " ");
+        while(p != NULL){
+
+            printf("%s ", p);
+
+            if(N!=i)
+                A[i][j] = atof(p);
+            else
+                A[j][N] = atof(p);
+
+
+            p = strtok(NULL, " ");
+            j++;
+        }
+
+        i++;
+
+	}
+
+    printf("\n");
+
+	fclose(input);
+
+    print_array();
+
+    spawn gaussian_elimination();
+    sync;
+
+    print_array();
+
+    f = fopen("output.txt", "w");
+    if (f == NULL)
+    {
+        printf("Error opening file!\n");
+        exit(1);
+    }
+
+    fprintf(f, "%d\n", N);
+    i = 0;
+    for(; i < N; i++){
+        int j=0;
+        for(; j < N; j++){
+            fprintf(f, "%.3f ", A[i][j]);
+        }
+        fprintf(f, "\n");
+    }
+
+    i=0;
+    for(;i<N;i++){
+        fprintf(f, "%.5f ", A[i][N]);
+    }
+
+    fclose(f);
+
+    return 0;
+
+}
